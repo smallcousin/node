@@ -59,6 +59,9 @@ Java内存模型描述了Java程序中各种共享变量（线程间共享）的
 ## ReentrantLock的特点
 可重入  公平锁  响应中断  限时等待
 公平锁和限时等待不太理解
+问ReentrantLock是什么的时候  回答的步骤
+1.表面上，即直观上是什么  2.实质上是什么  3.有什么性质  4.如何使用 5.横向对比
+可重入的独占式锁
 
 ## ReadWriteLock 的简单使用
 简单来讲，就是该接口允许一次读取多个线程，但一次只能写入一个线程
@@ -74,7 +77,202 @@ CAS是一种无锁的并发控制算法，它包含三个参数CAS(V, A, B)。V�
 
 ## CAS自旋？？？
 
+##  synchronized关键字与wait()和notify()/notifyAll()方法相结合可以实现等待/通知机制
+```java
+public class WaitNotifyExample {
+  private Object lock = new Object();
+
+  public void producer() {
+    synchronized (lock) {
+      System.out.println("Producer thread started");
+      try {
+        lock.wait();  // 让生产者线程等待
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      System.out.println("Producer thread resumed");
+    }
+  }
+
+  public void consumer() {
+    synchronized (lock) {
+      System.out.println("Consumer thread started");
+      lock.notify();  // 唤醒在此对象监视器上等待的单个线程
+      System.out.println("Consumer thread finished");
+    }
+  }
+}
+```
+ReentrantLock实现选择性通知
+```java
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class ReentrantLockConditionExample {
+  private ReentrantLock lock = new ReentrantLock();
+  private Condition condition = lock.newCondition();
+
+  public void waitCondition() {
+    lock.lock();
+    try {
+      System.out.println("开始等待...");
+      condition.await();  // 让当前线程在condition上等待
+      System.out.println("等待结束，继续执行...");
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  public void signalCondition() {
+    lock.lock();
+    try {
+      System.out.println("发送通知...");
+      condition.signal();  // 唤醒在condition上等待的一个线程
+    } finally {
+      lock.unlock();
+    }
+  }
+}
+```
+
+## Semaphore
+Semaphore 是一个计数信号量，用来控制同时访问特定资源的线程数量。它的内部维护了一个 "许可" 集合，
+线程可以通过 acquire() 方法获取许可，如果当前许可已经被其他线程全部获取，那么线程会等待直到有线程释放许可为止。
+线程使用完许可后，需要调用 release() 方法来释放许可
+
+## 对象头
+在Java中，对象头是分配给每个对象的一部分内存，其中包含该对象的元数据。对象头通常包含以下信息：
+对象标识信息：这部分信息用于标识对象的类、哈希码和GC状态等。
+类型指针：指向表示对象类的元数据的指针。
+锁信息：与对象关联的锁信息，用于同步和并发控制。
+GC信息：用于垃圾回收的相关信息。
+
+## 为什么不用Finalize方法
+Java中的finalize()方法是Object类的一个方法，它会在垃圾收集器将对象从内存中清除出去之前被调用。
+这个方法主要用于确保对象在被销毁前完成特殊的清理工作，比如释放非Java资源（如数据库连接，网络连接，文件句柄等）。
+
+finalize()方法在Java 9中被标记为已弃用，因为它有很多潜在的问题：
+
+执行时间不确定：finalize()方法是由垃圾收集器调用的，而垃圾收集器的执行时间是不可预测的，因此，
+你不能确定何时finalize()会被执行。
+
+可能导致性能下降：如果在finalize()方法中执行耗时的操作，如关闭数据库连接或清理大量的资源，可能会导致垃圾收集的效率降低。
+
+可能导致资源不被正确释放：如果在finalize()方法中出现异常，垃圾收集器不会报告这个异常，因此可能导致资源没有正确地被清理。
+
+因此，现在更推荐使用try-with-resources语句或显式的清理方法来管理资源，而不是依赖于finalize()方法。
+
+1.finalize方法的优先级比较低
+2.finalize只能执行一次
+finalize可以用来拯救对象，但是有上面两个问题
+
+## 怎么判断对象存活
+1. 引用计数法
+2. 可达性分析算法 
+
+在Java中，垃圾收集器负责自动管理内存，它会释放那些不再被任何部分的程序代码所引用的对象的内存。
+判断一个对象是否“存活”（即是否仍然可访问），通常涉及到几种不同的概念和机制。
+
+引用计数法（不是Java使用的方法）: 每个对象有一个引用计数器，每当有一个新的引用指向该对象时，计数器值就加一；
+当引用被置为null或改变引用对象时，计数器值就减一。当计数器的值为零时，对象就认为是不可达的。然而，Java没有采用这种方式
+，因为它无法解决对象之间相互引用的情况。
+
+可达性分析法: Java使用这种方式。从垃圾收集根节点开始，遍历所有的引用路径。程序中可以访问的对象被认为是可达的，
+也就是“存活”的。不可达的对象认为是“死亡”的，适合进行垃圾回收。根节点集包括局部变量、活动线程、静态字段等
+GCroots 有：静态变量、线程变量、常量池、JNI指针
 
 
+## CMS垃圾回收器，以及问题
+Concurrent Mark Sweep
+CMS（Concurrent Mark Sweep）垃圾收集器是Java虚拟机中的一种垃圾收集器，主要用于收集堆内存中的老年代对象。
+CMS垃圾收集器以获取最短回收停顿时间为目标，适用于响应时间有严格要求的应用。
 
+CMS垃圾收集器的工作过程可以分为以下阶段：
+初始标记（Initial Mark）：此阶段需要STW（Stop-The-World），标记GC Roots能直接关联的对象。
+并发标记（Concurrent Mark）：与应用线程并发执行，对堆中的对象进行深度优先的遍历标记。
+再次标记（Remark）：由于并发标记阶段用户线程依然在运行，因此需要STW，修正并发标记期间由于用户程序继续运行而导致的标记变化。
+并发清除（Concurrent Sweep）：与应用线程并发执行，清除未被标记的对象。
+CMS垃圾收集器存在的问题：
+1. 内存碎片问题：由于CMS使用标记-清除算法，可能会产生大量不连续的内存碎片。这会导致在为大对象分配内存时发生问题，
+可能触发Full GC来整理内存。
+2. 停顿时间虽短但仍存在：尽管CMS减少了停顿时间，但在初始标记和再次标记阶段还是需要STW。这对于非常延迟敏感的应用仍然可能是个问题。
+增加的CPU开销：为了减少停顿时间，CMS会使用更多的CPU资源来并发执行垃圾回收，这可能会影响应用的总体吞吐量。
+3. 并发阶段可能导致失败：CMS在并发清理阶段若预测错误，老年代空间不足，会导致一个Full GC，这样的GC会比CMS的整
+个收集周期停顿时间更长。
+4. 浮动垃圾问题：在CMS工作期间，应用线程仍在运行并产生新的垃圾，这部分垃圾只能等到下一次GC时才能被清除，称之为浮动垃圾。
+
+1.CPU敏感
+2.浮动垃圾
+3.内存碎片
+
+## 用户线程和守护线程的区别
+用户线程（User Thread）：用户线程通常是程序的主要执行线程，如 main() 方法的执行线程。只要有一个用户线程仍然在运行
+，JVM就会继续运行。即使主线程（通常是启动程序的线程）结束，只要还有用户线程在运行，程序就不会停止。
+
+守护线程（Daemon Thread）：守护线程主要用于后台处理服务或者进行垃圾回收、清理等操作，如 JVM的垃圾收集线程。
+守护线程的生命周期依赖于用户线程，即当所有的用户线程都结束时，JVM会正常退出，而不管守护线程是否执行完毕。
+
+## Executor和Executors的区别
+Executor是一个接口  Executors是线程池的一个工具类
+常用线程池有
+1. FixedThreadPool：固定大小的线程池。每当提交一个任务就创建一个线程，直到线程达到线程池的最大大小。
+线程池的大小一旦达到最大值就会保持不变，如果某个线程因执行异常而结束，线程池会补充一个新线程。
+2. CachedThreadPool：缓存型线程池。这种类型的线程池大小非常灵活，可以根据需求自动的更改池的大小。
+3. SingleThreadExecutor：单线程的Executor，创建单个工作线程来执行任务，如果这个线程异常结束，会创建一个新的来替代
+4. ScheduledThreadPoolExecutor：可调度的线程池，可以设置线程的定时或周期性执行任务。
+
+## volatile 关键字的作用
+1. 确保多线程的可见性
+2. 禁止指令重排序
+
+## 怎么去唤醒一个线程
+1. wait和notify  配合synoriarine使用
+2. park和unpark
+
+## java实现多线程间的通讯和协作
+1. synchronized和wait+notify
+2. Lock + Condition
+
+## 对象的创建过程
+1. 类加载
+2. 检查加载
+3. 分配内存
+4. 内存初始化
+5. 设置  信息放在对象头
+6. 对象初始化
+
+## Minor GC 和 Full GC 分别发送在什么时候
+Minor GC（小型垃圾收集）： Minor GC通常发生在新生代（Young Generation）的Eden区满时。新生代是堆内存的一部分，
+新创建的对象通常首先在新生代中分配。当Eden区域变满，就会触发Minor GC。在Minor GC期间，活动的对象会被移动到Survivor区域，
+然后，清理Eden区和其中一个Survivor区的所有对象。Minor GC要清理的内存相对较小，且新生代中的对象通常具有"朝生暮死"的特性，所
+以Minor GC通常比较快，且会频繁发生。
+
+Full GC（完全垃圾收集）： Full GC会清理整个Java堆，包括新生代和老年代（Old Generation）。通常在以下情况下触发Full GC：
+老年代空间不足：在Minor GC过程中，生存周期长的对象会被移动到老年代，当老年代的空间不足以容纳新的对象时，就会触发Full GC。
+显式系统调用：当系统调用了System.gc()时，也会触发Full GC。
+Metaspace或PermGen空间不足：用于存储类的元信息的空间（在Java8之前是PermGen，Java8之后是Metaspace）如果不足，也
+会触发Full GC。
+
+简单来讲， Minor GC在年轻代满了的时候发生， Full GC 在老年代或方法区满的时候发生
+
+## 类加载器，类加载器有哪些
+类加载的生命周期
+加载 验证 准备 解析 卸载 使用 初始化
+    ————————————
+        连接
+
+类加载器
+Boostrap ClassLoader
+Extention ClassLoader
+Application ClassLoader
+Custom ClassLoader
+
+## G1垃圾回收器
+1. 并发与并行
+2. 分代收集
+3. 空间整合
+4. 可以建立可预测的停顿模型
+5. 将整个java堆内存模型分为多个大小相等的Region，使得年轻代和老年代不在物理上隔离开来
 
